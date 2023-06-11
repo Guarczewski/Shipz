@@ -1,334 +1,225 @@
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.*;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
+import java.awt.event.KeyEvent;
+import java.awt.event.KeyListener;
+import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
 import java.io.Serializable;
-import java.net.ServerSocket;
-import java.net.Socket;
 import java.util.ArrayList;
 import java.util.List;
 
-class Host {
-
-    final int PORT = 7777;
-
-    Host(){
-        Main.myTurn = true;
-        ServerSocket serverSocket = null;
-        try {
-            serverSocket = new ServerSocket(PORT);
-        } catch (Exception exception) {
-            exception.printStackTrace();
-        }
-
-        ServerSocket finalServerSocket = serverSocket;
-
-        new Thread(() -> {
-
-            Socket socket = null;
-            ObjectOutputStream objectOutputStream = null;
-            ObjectInputStream objectInputStream = null;
-            try {
-                socket = finalServerSocket.accept();
-                objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
-                objectInputStream = new ObjectInputStream(socket.getInputStream());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-
-            while (true) {
-                try {
-
-                    objectOutputStream.reset();
-                    objectOutputStream.flush();
-                    objectOutputStream.writeUnshared(Main.buttonsToSend);
-
-
-                    List<Point> temp = (List<Point>) objectInputStream.readObject();
-                    if (temp.size() > 0)
-                        Main.updateMyNodes(temp);
-                    // System.out.println(temp);
-
-                    Thread.sleep(10);
-
-                } catch (Exception ignored) {
-                }
-            }
-        }).start();
-
-    }
-}
-
-class Client {
-
-    final int PORT = 7777;
-
-    Client(){
-        Main.myTurn = false;
-        new Thread(() -> {
-            Socket socket = null;
-            ObjectOutputStream objectOutputStream = null;
-            ObjectInputStream objectInputStream = null;
-            try {
-                socket = new Socket("localhost", PORT);
-                objectOutputStream = new ObjectOutputStream(socket.getOutputStream());
-                objectInputStream = new ObjectInputStream(socket.getInputStream());
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-            while (true) {
-                try {
-                    List<Point> temp = (List<Point>) objectInputStream.readObject();
-                    if (temp.size() > 0)
-                        Main.updateMyNodes(temp);
-
-                   // System.out.println(temp);
-                    objectOutputStream.reset();
-                    objectOutputStream.flush();
-                    objectOutputStream.writeUnshared(Main.buttonsToSend);
-
-                    Thread.sleep(100);
-
-                } catch (Exception ignored) {
-                }
-            }
-        }).start();
-
-    }
-}
-
-class CButton extends JButton implements Serializable {
+class Node extends JButton implements Serializable {
+    boolean occupied, hit;
     int cordX, cordY;
-    boolean occupied;
-    boolean hitByEnemy;
-    CButton(int cordX, int cordY){
+    public Node(int cordX, int cordY) {
         this.cordX = cordX;
         this.cordY = cordY;
+
+        occupied = false;
+        hit = false;
+
     }
 }
 
 public class Main extends JFrame implements MouseListener, KeyListener {
-    public static int Size = 10;
-    public static List<Point> buttonsToSend = new ArrayList<>();
-    static Main main;
-    public static boolean rotationVer = false, oddTurn = false;
-    public static boolean myTurn;
+    public static final int Size = 10;
+    public static Main gameInstance;
+    public static Node[][] myNodes;
+    public static Node[][] enemyNodes;
+    public static Client clientModule;
+    public static Host hostModule;
+    public static boolean rotationVer;
     public static int qShip = 1, tShip = 2, dShip = 3, oShip = 4;
-    public static int turn = 0;
-    public static CButton[][] enemyNodes;
-    public static CButton[][] myNodes;
-
-    public static CButton selectedButton;
+    public static List<Node> nodesToSend = new ArrayList<>();
 
     Main(){
         super("Shit!");
         setBounds(0, 0, 1280, 720);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setLayout(new BorderLayout());
 
-
+        myNodes = new Node[Size][Size];
+        enemyNodes = new Node[Size][Size];
 
         JPanel areasHolder = new JPanel(new GridLayout(0,2));
-
         JPanel areaUno = new JPanel(new GridLayout(Size,Size));
         JPanel areaDuo = new JPanel(new GridLayout(Size,Size));
 
-        enemyNodes = new CButton[Size][Size];
-        myNodes = new CButton[Size][Size];
-
         for (int i = 0; i < Size; i++) {
             for (int j = 0; j < Size; j++) {
-                enemyNodes[i][j] = new CButton(i,j);
-                enemyNodes[i][j].setBackground(Color.CYAN);
-                enemyNodes[i][j].addMouseListener(this);
-                areaUno.add(enemyNodes[i][j]);
 
-                myNodes[i][j] = new CButton(i,j);
+                myNodes[i][j] = new Node(i,j);
                 myNodes[i][j].setBackground(Color.CYAN);
                 myNodes[i][j].addMouseListener(this);
                 areaDuo.add(myNodes[i][j]);
+
+                enemyNodes[i][j] = new Node(i,j);
+                enemyNodes[i][j].setBackground(Color.CYAN);
+                areaUno.add(enemyNodes[i][j]);
+
             }
         }
 
         areasHolder.add(areaDuo);
         areasHolder.add(areaUno);
 
-        add(areasHolder,BorderLayout.CENTER);
-        areasHolder.addKeyListener(this);
         addKeyListener(this);
+
+        setContentPane(areasHolder);
         requestFocus();
         setVisible(true);
-
-
-
     }
-    public static void updateMyNodes(List<Point> pointList) {
-        for (Point point : pointList)
-            myNodes[point.x][point.y].hitByEnemy = true;
 
-        Update();
+    public static void main(String[] args) {
+        gameInstance = new Main();
+        clientModule = new Client();
+      //  hostModule = new Host();
+
+        System.out.println("Hello world!");
     }
-    public static void setShip(CButton cButton){
+
+    public static void setShip(Node selectedNode){
         if (qShip > 0) {
             if (rotationVer) {
-                if (cButton.cordY + 3 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].occupied = true;
-                    myNodes[cButton.cordX][cButton.cordY + 1].occupied = true;
-                    myNodes[cButton.cordX][cButton.cordY + 2].occupied = true;
-                    myNodes[cButton.cordX][cButton.cordY + 3].occupied = true;
+                if (selectedNode.cordY + 3 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].occupied = true;
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 1].occupied = true;
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 2].occupied = true;
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 3].occupied = true;
                     qShip--;
                 }
             }
             else {
-                if (cButton.cordX + 3 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].occupied = true;
-                    myNodes[cButton.cordX + 1][cButton.cordY].occupied = true;
-                    myNodes[cButton.cordX + 2][cButton.cordY].occupied = true;
-                    myNodes[cButton.cordX + 3][cButton.cordY].occupied = true;
+                if (selectedNode.cordX + 3 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].occupied = true;
+                    myNodes[selectedNode.cordX + 1][selectedNode.cordY].occupied = true;
+                    myNodes[selectedNode.cordX + 2][selectedNode.cordY].occupied = true;
+                    myNodes[selectedNode.cordX + 3][selectedNode.cordY].occupied = true;
                     qShip--;
                 }
             }
         }
         else if (tShip > 0) {
             if (rotationVer) {
-                if (cButton.cordY + 2 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].occupied = true;
-                    myNodes[cButton.cordX][cButton.cordY + 1].occupied = true;
-                    myNodes[cButton.cordX][cButton.cordY + 2].occupied = true;
+                if (selectedNode.cordY + 2 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].occupied = true;
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 1].occupied = true;
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 2].occupied = true;
                     tShip--;
                 }
             }
             else  {
-                if (cButton.cordY + 2 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].occupied = true;
-                    myNodes[cButton.cordX + 1][cButton.cordY].occupied = true;
-                    myNodes[cButton.cordX + 2][cButton.cordY].occupied = true;
+                if (selectedNode.cordY + 2 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].occupied = true;
+                    myNodes[selectedNode.cordX + 1][selectedNode.cordY].occupied = true;
+                    myNodes[selectedNode.cordX + 2][selectedNode.cordY].occupied = true;
                     tShip--;
                 }
             }
         }
         else if (dShip > 0) {
             if (rotationVer) {
-                if (cButton.cordY + 1 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].occupied = true;
-                    myNodes[cButton.cordX][cButton.cordY + 1].occupied = true;
+                if (selectedNode.cordY + 1 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].occupied = true;
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 1].occupied = true;
                     dShip--;
                 }
             }
             else {
-                if (cButton.cordY + 1 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].occupied = true;
-                    myNodes[cButton.cordX + 1][cButton.cordY].occupied = true;
+                if (selectedNode.cordY + 1 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].occupied = true;
+                    myNodes[selectedNode.cordX + 1][selectedNode.cordY].occupied = true;
                     dShip--;
                 }
             }
         }
         else if (oShip > 0) {
-            myNodes[cButton.cordX][cButton.cordY].occupied = true;
+            myNodes[selectedNode.cordX][selectedNode.cordY].occupied = true;
             oShip--;
         }
         if (oShip == 0) {
             for (int i = 0; i < Size; i++) {
                 for (int j = 0; j < Size; j++) {
-                    myNodes[i][j].removeMouseListener(Main.main);
+                    myNodes[i][j].removeMouseListener(Main.gameInstance);
+                    enemyNodes[i][j].addMouseListener(Main.gameInstance);
+                    if (myNodes[i][j].occupied)
+                        nodesToSend.add(myNodes[i][j]);
                 }
+            }
+            if (clientModule != null) {
+                Client.Send();
+                nodesToSend.clear();
+                System.out.println("Sent Package Client");
+            }
+            else if (hostModule != null) {
+                Host.Send();
+                nodesToSend.clear();
+                System.out.println("Sent Package Host");
             }
         }
 
     }
-    public static void previewShip(CButton cButton){
+
+    public static void previewShip(Node selectedNode){
         if (qShip > 0) {
             if (rotationVer) {
-                if (cButton.cordY + 3 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX][cButton.cordY + 1].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX][cButton.cordY + 2].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX][cButton.cordY + 3].setBackground(Color.ORANGE);
+                if (selectedNode.cordY + 3 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 1].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 2].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 3].setBackground(Color.ORANGE);
                 }
             }
             else {
-                if (cButton.cordX + 3 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX + 1][cButton.cordY].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX + 2][cButton.cordY].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX + 3][cButton.cordY].setBackground(Color.ORANGE);
+                if (selectedNode.cordX + 3 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX + 1][selectedNode.cordY].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX + 2][selectedNode.cordY].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX + 3][selectedNode.cordY].setBackground(Color.ORANGE);
                 }
             }
         }
         else if (tShip > 0) {
             if (rotationVer) {
-                if (cButton.cordY + 2 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX][cButton.cordY + 1].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX][cButton.cordY + 2].setBackground(Color.ORANGE);
+                if (selectedNode.cordY + 2 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 1].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 2].setBackground(Color.ORANGE);
                 }
             }
             else {
-                if (cButton.cordX + 2 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX + 1][cButton.cordY].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX + 2][cButton.cordY].setBackground(Color.ORANGE);
+                if (selectedNode.cordX + 2 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX + 1][selectedNode.cordY].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX + 2][selectedNode.cordY].setBackground(Color.ORANGE);
                 }
             }
         }
         else if (dShip > 0) {
             if (rotationVer) {
-                if (cButton.cordY + 1 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX][cButton.cordY + 1].setBackground(Color.ORANGE);
+                if (selectedNode.cordY + 1 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX][selectedNode.cordY + 1].setBackground(Color.ORANGE);
                 }
             }
             else {
-                if (cButton.cordX + 1 < Size) {
-                    myNodes[cButton.cordX][cButton.cordY].setBackground(Color.ORANGE);
-                    myNodes[cButton.cordX + 1][cButton.cordY].setBackground(Color.ORANGE);
+                if (selectedNode.cordX + 1 < Size) {
+                    myNodes[selectedNode.cordX][selectedNode.cordY].setBackground(Color.ORANGE);
+                    myNodes[selectedNode.cordX + 1][selectedNode.cordY].setBackground(Color.ORANGE);
                 }
             }
         }
         else if (oShip > 0) {
-            myNodes[cButton.cordX][cButton.cordY].setBackground(Color.ORANGE);
+            myNodes[selectedNode.cordX][selectedNode.cordY].setBackground(Color.ORANGE);
         }
-        else if (oShip <= 0) {
-            for (int i = 0; i < Size; i++) {
-                for (int j = 0; j < Size; j++) {
-
-                    myNodes[i][j].removeMouseListener(Main.main);
-                }
-            }
-        }
-    }
-    public static void hitTheTarget(CButton cButton){
-        buttonsToSend.add(new Point(cButton.cordX, cButton.cordY));
-        enemyNodes[cButton.cordX][cButton.cordY].hitByEnemy = true;
-    }
-    public static void main(String[] args) {
-       main = new Main();
-      // new Host();
-       new Client();
-    }
-
-    @Override
-    public void mouseClicked(MouseEvent e) {
-
-    }
-
-    @Override
-    public void mousePressed(MouseEvent e) {
-        if (oShip <= 0) {
-            hitTheTarget(selectedButton);
-        }
-        else {
-            setShip(selectedButton);
-        }
-        main.requestFocus();
     }
 
     public static void Update(){
         for (int i = 0; i < Size; i++) {
             for (int j = 0; j < Size; j++) {
-                if (myNodes[i][j].hitByEnemy) {
+                if (myNodes[i][j].hit && myNodes[i][j].occupied) {
+                    myNodes[i][j].setBackground(Color.RED);
+                }
+                else if (myNodes[i][j].hit) {
                     myNodes[i][j].setBackground(Color.BLACK);
                 }
                 else if (myNodes[i][j].occupied) {
@@ -338,17 +229,53 @@ public class Main extends JFrame implements MouseListener, KeyListener {
                     myNodes[i][j].setBackground(Color.CYAN);
                 }
 
-                if (enemyNodes[i][j].hitByEnemy) {
+                if (enemyNodes[i][j].hit && enemyNodes[i][j].occupied) {
+                    enemyNodes[i][j].setBackground(Color.RED);
+                }
+                else if (enemyNodes[i][j].hit) {
                     enemyNodes[i][j].setBackground(Color.BLACK);
                 }
                 else if (enemyNodes[i][j].occupied) {
-                    enemyNodes[i][j].setBackground(Color.ORANGE);
+                   // enemyNodes[i][j].setBackground(Color.ORANGE);
                 }
                 else {
                     enemyNodes[i][j].setBackground(Color.CYAN);
                 }
             }
         }
+    }
+
+    public static void hitTheTarget(Node selectedNode){
+        nodesToSend.add(new Node(selectedNode.cordX, selectedNode.cordY));
+        enemyNodes[selectedNode.cordX][selectedNode.cordY].hit = true;
+        if (clientModule != null) {
+            Client.Send();
+            nodesToSend.clear();
+            System.out.println("Sent Package Client");
+        }
+        else if (hostModule != null) {
+            Host.Send();
+            nodesToSend.clear();
+            System.out.println("Sent Package Host");
+        }
+    }
+
+    @Override
+    public void mouseClicked(MouseEvent e) {
+
+    }
+
+    @Override
+    public void mousePressed(MouseEvent e) {
+        Update();
+
+        if (oShip > 0)
+            setShip((Node) e.getSource());
+        else
+            hitTheTarget((Node) e.getSource());
+
+        gameInstance.requestFocus();
+        Update();
     }
 
     @Override
@@ -359,31 +286,31 @@ public class Main extends JFrame implements MouseListener, KeyListener {
     @Override
     public void mouseEntered(MouseEvent e) {
         Update();
-        selectedButton = (CButton) e.getSource();
 
-        if (turn < 2) {
-            if (!oddTurn) {
-                previewShip(selectedButton);
-            }
-        }
+        if (oShip > 0)
+            previewShip((Node) e.getSource());
 
-        main.requestFocus();
+        if (gameInstance != null)
+            gameInstance.requestFocus();
     }
 
     @Override
     public void mouseExited(MouseEvent e) {
+
     }
 
     @Override
     public void keyTyped(KeyEvent e) {
+
     }
 
     @Override
     public void keyPressed(KeyEvent e) {
-        rotationVer =! rotationVer;
+        rotationVer = !rotationVer;
     }
 
     @Override
     public void keyReleased(KeyEvent e) {
+
     }
 }
